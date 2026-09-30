@@ -86,11 +86,54 @@ dyn_clone::clone_trait_object!(<T> InternalFieldDecode<T>);
 // ----
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct I64Decoder;
+struct InternalI64Decoder;
 
-impl FieldDecode for I64Decoder {
+impl FieldDecode for InternalI64Decoder {
     fn decode(&self, _ctx: &mut FieldDecodeContext, br: &mut BitReader) -> FieldValue {
         FieldValue::I64(br.read_varint64())
+    }
+}
+
+// signed counterpart of InternalU64Fixed8Decoder; the byte is sign extended.
+#[derive(Debug, Clone, Default)]
+struct InternalI64Fixed8Decoder;
+
+impl FieldDecode for InternalI64Fixed8Decoder {
+    fn decode(&self, _ctx: &mut FieldDecodeContext, br: &mut BitReader) -> FieldValue {
+        FieldValue::I64(br.read_byte() as i8 as i64)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct I64Decoder {
+    decoder: Box<dyn FieldDecode>,
+}
+
+impl Default for I64Decoder {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            decoder: Box::<InternalI64Decoder>::default(),
+        }
+    }
+}
+
+impl I64Decoder {
+    #[inline]
+    pub(crate) fn new(field: &FlattenedSerializerField) -> Self {
+        if field.var_encoder_heq(fxhash::hash_bytes(b"fixed8")) {
+            Self {
+                decoder: Box::<InternalI64Fixed8Decoder>::default(),
+            }
+        } else {
+            Self::default()
+        }
+    }
+}
+
+impl FieldDecode for I64Decoder {
+    fn decode(&self, ctx: &mut FieldDecodeContext, br: &mut BitReader) -> FieldValue {
+        self.decoder.decode(ctx, br)
     }
 }
 
@@ -116,6 +159,19 @@ impl FieldDecode for InternalU64Fixed64Decoder {
     }
 }
 
+// deadlock started emitting a "fixed8" var encoder: the value occupies one raw byte instead of
+// a varint. it shows up on uint8/int8 fields and on a large set of *_t enums (MoveType_t,
+// SolidType_t, RenderMode_t, SurroundingBoundsType_t, ...) that sit on nearly every entity, so
+// decoding those as varints desyncs the bit stream within the first packet.
+#[derive(Debug, Clone, Default)]
+struct InternalU64Fixed8Decoder;
+
+impl FieldDecode for InternalU64Fixed8Decoder {
+    fn decode(&self, _ctx: &mut FieldDecodeContext, br: &mut BitReader) -> FieldValue {
+        FieldValue::U64(br.read_byte() as u64)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct U64Decoder {
     decoder: Box<dyn FieldDecode>,
@@ -138,6 +194,10 @@ impl U64Decoder {
         if field.var_encoder_heq(fxhash::hash_bytes(b"fixed64")) {
             Self {
                 decoder: Box::<InternalU64Fixed64Decoder>::default(),
+            }
+        } else if field.var_encoder_heq(fxhash::hash_bytes(b"fixed8")) {
+            Self {
+                decoder: Box::<InternalU64Fixed8Decoder>::default(),
             }
         } else {
             Self::default()

@@ -124,10 +124,10 @@ fn visit_ident(
 
     match ident {
         // primitives
-        "int8" => non_special!(I64Decoder),
-        "int16" => non_special!(I64Decoder),
-        "int32" => non_special!(I64Decoder),
-        "int64" => non_special!(I64Decoder),
+        "int8" => non_special!(I64Decoder::new(field)),
+        "int16" => non_special!(I64Decoder::new(field)),
+        "int32" => non_special!(I64Decoder::new(field)),
+        "int64" => non_special!(I64Decoder::new(field)),
         "bool" => non_special!(BoolDecoder),
         "float32" => non_special!(F32Decoder::new(field)?),
 
